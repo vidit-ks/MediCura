@@ -1,0 +1,39 @@
+# Dependencies
+node_modules/
+**/node_modules/
+
+# Environment variables (NEVER commit secrets)
+.env
+**/.env
+.env.local
+.env.production
+.env.development
+
+# Build outputs
+dist/
+build/
+.next/
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Hardhat
+/cache
+/artifacts
+/typechain
+/typechain-types
+/coverage
+/coverage.json
+ignition/deployments/chain-31337
+
+# Misc
+cloudkey.json

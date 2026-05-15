@@ -1,0 +1,25 @@
+Cura Foresight is a full-stack web application built using the MERN stack with blockchain integration.
+
+Frontend:
+- React
+- Tailwind CSS
+- Vite
+
+Backend:
+- Node.js
+- Express.js
+
+Database:
+- MongoDB
+
+Blockchain:
+- Hardhat (Smart Contracts)
+
+ Features
+- Responsive frontend built with React
+- RESTful APIs using Express
+- MongoDB database integration
+- Smart contract deployment and interaction
+- Modular backend structure (controllers, models, routes)
+
+
