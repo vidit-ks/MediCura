@@ -8,6 +8,7 @@ import aiRoute from './Routes/aiModel.js'
 import uploadRoute from './Routes/upload.js'
 import doctorRoute from './Routes/doctor.js'
 import reviewRoute from './Routes/review.js'
+import agoraRoute from './Routes/agora.js'
 import supabase from './lib/supabase.js'
 
 dotenv.config()
@@ -42,6 +43,7 @@ app.use('/api/v1/upload', uploadRoute)
 app.use('/api/v1/users', userRoute)
 app.use('/api/v1/doctors', doctorRoute)
 app.use('/api/v1/reviews', reviewRoute)
+app.use('/api/v1/agora', agoraRoute)
 
 app.listen(port, () => {
   verifySupabase()
