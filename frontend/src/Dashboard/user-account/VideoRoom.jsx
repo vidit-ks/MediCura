@@ -20,11 +20,10 @@ const client = AgoraRTC.createClient({
   codec: "vp8",
 });
 
-export const VideoRoom = ({ join }) => {
+export const VideoRoom = () => {
   const navigate = useNavigate();
   const [users, setUsers] = useState([]);
   const [localTracks, setLocalTracks] = useState([]);
-  const [localUser, setLocalUser] = useState(null);
   const [isMuted, setIsMuted] = useState(false);
   const [isCameraOff, setIsCameraOff] = useState(false);
 
@@ -67,6 +66,9 @@ export const VideoRoom = ({ join }) => {
           },
         ]);
         client.publish(tracks);
+      })
+      .catch((err) => {
+        console.error("Agora join error:", err);
       });
 
     return () => {
@@ -81,57 +83,39 @@ export const VideoRoom = ({ join }) => {
   }, []);
 
   const handleLeave = async () => {
-    if (localTracks.length > 0) {
+    try {
       for (let localTrack of localTracks) {
         localTrack.stop();
         localTrack.close();
       }
-
-      await client.unpublish(localTracks);
+      if (localTracks.length > 0) {
+        await client.unpublish(localTracks);
+      }
       await client.leave();
-
       setLocalTracks([]);
-      setLocalUser(null);
-      setUsers((previousUsers) =>
-        previousUsers.filter((user) => user.uid !== localUser.uid)
-      );
-      navigate("/");
+      setUsers([]);
+      navigate("/users/profile/me");
+    } catch (err) {
+      console.error("Error leaving call:", err);
+      navigate("/users/profile/me");
     }
   };
 
   const handleMute = () => {
-    if (localUser && localUser.audioTrack) {
-      if (isMuted) {
-        localUser.audioTrack.setEnabled(false);
-        setIsMuted(false);
-      } else {
-        localUser.audioTrack.setEnabled(true);
-        setIsMuted(true);
-      }
+    const audioTrack = localTracks[0]; // audioTrack is index 0
+    if (audioTrack) {
+      const newMuted = !isMuted;
+      audioTrack.setEnabled(!newMuted);
+      setIsMuted(newMuted);
     }
   };
 
   const handleCamera = () => {
-    if (localUser && localUser.videoTrack) {
-      if (isCameraOff) {
-        localUser.videoTrack
-          .setEnabled(true)
-          .then(() => {
-            setIsCameraOff(false);
-          })
-          .catch((error) => {
-            console.error("Failed to enable camera:", error);
-          });
-      } else {
-        localUser.videoTrack
-          .setEnabled(false)
-          .then(() => {
-            setIsCameraOff(true);
-          })
-          .catch((error) => {
-            console.error("Failed to disable camera:", error);
-          });
-      }
+    const videoTrack = localTracks[1]; // videoTrack is index 1
+    if (videoTrack) {
+      const newCameraOff = !isCameraOff;
+      videoTrack.setEnabled(!newCameraOff);
+      setIsCameraOff(newCameraOff);
     }
   };
   return (
@@ -141,64 +125,63 @@ export const VideoRoom = ({ join }) => {
           <VideoPlayer key={user.uid} user={user} />
         ))}
       </div>
-      {!join && (
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "center",
-            alignItems: "center",
-            gap: "40px",
-          }}
-        >
-          <div className={styles.end_call} onClick={handleMute}>
-            {isMuted ? (
-              <LiaMicrophoneSlashSolid
-                style={{
-                  width: "50px",
-                  height: "40px",
-                  cursor: "pointer",
-                  color: "white",
-                }}
-              />
-            ) : (
-              <LiaMicrophoneSolid
-                style={{
-                  width: "50px",
-                  height: "40px",
-                  cursor: "pointer",
-                  color: "white",
-                }}
-              />
-            )}
-          </div>
-          <div className={styles.end_call} onClick={handleCamera}>
-            {isCameraOff ? (
-              <PiVideoCameraSlashDuotone
-                style={{
-                  width: "50px",
-                  height: "40px",
-                  cursor: "pointer",
-                  color: "white",
-                }}
-              />
-            ) : (
-              <PiVideoCameraDuotone
-                style={{
-                  width: "50px",
-                  height: "40px",
-                  cursor: "pointer",
-                  color: "white",
-                }}
-              />
-            )}
-          </div>
-          <div className={styles.end_call} onClick={handleLeave}>
-            <FcEndCall
-              style={{ width: "50px", height: "40px", cursor: "pointer" }}
+      {/* Controls are always shown once in the room */}
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "center",
+          alignItems: "center",
+          gap: "40px",
+        }}
+      >
+        <div className={styles.end_call} onClick={handleMute}>
+          {isMuted ? (
+            <LiaMicrophoneSlashSolid
+              style={{
+                width: "50px",
+                height: "40px",
+                cursor: "pointer",
+                color: "white",
+              }}
             />
-          </div>
+          ) : (
+            <LiaMicrophoneSolid
+              style={{
+                width: "50px",
+                height: "40px",
+                cursor: "pointer",
+                color: "white",
+              }}
+            />
+          )}
         </div>
-      )}
+        <div className={styles.end_call} onClick={handleCamera}>
+          {isCameraOff ? (
+            <PiVideoCameraSlashDuotone
+              style={{
+                width: "50px",
+                height: "40px",
+                cursor: "pointer",
+                color: "white",
+              }}
+            />
+          ) : (
+            <PiVideoCameraDuotone
+              style={{
+                width: "50px",
+                height: "40px",
+                cursor: "pointer",
+                color: "white",
+              }}
+            />
+          )}
+        </div>
+        <div className={styles.end_call} onClick={handleLeave}>
+          <FcEndCall
+            style={{ width: "50px", height: "40px", cursor: "pointer" }}
+          />
+        </div>
+      </div>
     </div>
   );
 };
