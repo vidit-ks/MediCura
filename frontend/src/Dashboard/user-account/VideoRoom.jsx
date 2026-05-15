@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { VideoPlayer } from "./VideoPlayer";
 import styles from "./VideoRoom.module.css";
+import playerStyles from "./VideoPlayer.module.css";
 import AgoraRTC from "agora-rtc-sdk-ng";
 import { FcEndCall } from "react-icons/fc";
 import { useNavigate } from "react-router-dom";
@@ -15,24 +16,34 @@ const CHANNEL = "medicare";
 
 export const VideoRoom = () => {
   const navigate = useNavigate();
-  const clientRef = useRef(null); // client lives inside component, fresh each mount
-  const [users, setUsers] = useState([]);
-  const [localTracks, setLocalTracks] = useState([]);
-  const localTracksRef = useRef([]); // ref so cleanup can access latest tracks
+  const clientRef = useRef(null);
+  const localTracksRef = useRef([]);
+  const joinedRef = useRef(false); // guard against StrictMode double-invoke
+
+  const [remoteUsers, setRemoteUsers] = useState([]); // only remote users
+  const [localVideoTrack, setLocalVideoTrack] = useState(null); // local video separately
   const [isMuted, setIsMuted] = useState(false);
   const [isCameraOff, setIsCameraOff] = useState(false);
   const [status, setStatus] = useState("Connecting...");
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    // Create a brand-new Agora client on every mount
+    // Prevent StrictMode double-invocation
+    if (joinedRef.current) return;
+    joinedRef.current = true;
+
     const client = AgoraRTC.createClient({ mode: "rtc", codec: "vp8" });
     clientRef.current = client;
 
+    // Remote user published — deduplicate by uid
     const handleUserJoined = async (user, mediaType) => {
       await client.subscribe(user, mediaType);
+
       if (mediaType === "video") {
-        setUsers((prev) => [...prev, user]);
+        // Add remote user only once (deduplication)
+        setRemoteUsers((prev) =>
+          prev.find((u) => u.uid === user.uid) ? prev : [...prev, user]
+        );
       }
       if (mediaType === "audio") {
         user.audioTrack.play();
@@ -40,36 +51,29 @@ export const VideoRoom = () => {
     };
 
     const handleUserLeft = (user) => {
-      setUsers((prev) => prev.filter((u) => u.uid !== user.uid));
+      setRemoteUsers((prev) => prev.filter((u) => u.uid !== user.uid));
     };
 
     const joinRoom = async () => {
       try {
-        // 1. Fetch fresh token from backend
         setStatus("Getting token...");
         const res = await fetch(`${BASE_URL}/agora/token?channel=${CHANNEL}`);
         if (!res.ok) throw new Error("Failed to fetch Agora token");
         const { token, appId } = await res.json();
 
-        // 2. Register event listeners
         client.on("user-published", handleUserJoined);
         client.on("user-left", handleUserLeft);
 
-        // 3. Join channel
         setStatus("Joining channel...");
-        const uid = await client.join(appId, CHANNEL, token, null);
+        await client.join(appId, CHANNEL, token, null);
 
-        // 4. Create mic + camera tracks
         setStatus("Starting camera & mic...");
         const tracks = await AgoraRTC.createMicrophoneAndCameraTracks();
-        const [audioTrack, videoTrack] = tracks;
+        const [, videoTrack] = tracks;
 
-        // 5. Store tracks in both state and ref
         localTracksRef.current = tracks;
-        setLocalTracks(tracks);
-        setUsers((prev) => [...prev, { uid, videoTrack, audioTrack }]);
+        setLocalVideoTrack(videoTrack); // show local video separately
 
-        // 6. Publish
         await client.publish(tracks);
         setStatus("Connected");
       } catch (err) {
@@ -81,7 +85,6 @@ export const VideoRoom = () => {
 
     joinRoom();
 
-    // Cleanup: stop tracks and leave channel when component unmounts
     return () => {
       client.off("user-published", handleUserJoined);
       client.off("user-left", handleUserLeft);
@@ -100,16 +103,17 @@ export const VideoRoom = () => {
         track.stop();
         track.close();
       }
-      if (localTracksRef.current.length > 0) {
+      if (localTracksRef.current.length > 0 && client) {
         await client.unpublish(localTracksRef.current);
       }
-      await client.leave();
+      if (client) await client.leave();
     } catch (err) {
       console.error("Leave error:", err);
     } finally {
       localTracksRef.current = [];
-      setLocalTracks([]);
-      setUsers([]);
+      joinedRef.current = false;
+      setLocalVideoTrack(null);
+      setRemoteUsers([]);
       navigate("/users/profile/me");
     }
   };
@@ -155,11 +159,17 @@ export const VideoRoom = () => {
       )}
 
       <div className={styles.videoPlayer_cont}>
-        {users.map((user) => (
+        {/* Local video tile */}
+        {localVideoTrack && (
+          <LocalVideoPlayer videoTrack={localVideoTrack} label="You" />
+        )}
+        {/* Remote users */}
+        {remoteUsers.map((user) => (
           <VideoPlayer key={user.uid} user={user} />
         ))}
       </div>
 
+      {/* Controls */}
       <div
         style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: "40px", marginTop: "16px" }}
       >
@@ -183,6 +193,32 @@ export const VideoRoom = () => {
           <FcEndCall style={{ width: "50px", height: "40px", cursor: "pointer" }} />
         </div>
       </div>
+    </div>
+  );
+};
+
+// Separate component for local video — plays the local track directly into a div
+const LocalVideoPlayer = ({ videoTrack, label }) => {
+  const ref = useRef();
+  useEffect(() => {
+    if (videoTrack && ref.current) {
+      videoTrack.play(ref.current);
+    }
+    return () => {
+      videoTrack?.stop();
+    };
+  }, [videoTrack]);
+
+  return (
+    <div style={{ position: "relative" }}>
+      <div ref={ref} className={playerStyles.vidPlayer} />
+      <span style={{
+        position: "absolute", bottom: "8px", left: "8px",
+        background: "rgba(0,0,0,0.5)", color: "white",
+        padding: "2px 8px", borderRadius: "4px", fontSize: "12px"
+      }}>
+        {label}
+      </span>
     </div>
   );
 };
