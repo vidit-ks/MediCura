@@ -30,17 +30,17 @@ const Prediction = () => {
   };
   return (
     <div>
-      <div className="flex p-8 justify-around">
-        <div>
-          <img src={icon01} className="h-[400px] w-[400px]" alt="" />
+      <div className="flex flex-col md:flex-row p-5 md:p-8 gap-8 md:justify-around items-start">
+        <div className="flex justify-center md:block">
+          <img src={icon01} className="w-[200px] h-[200px] md:w-[400px] md:h-[400px]" alt="" />
         </div>
-        <div className="min-w-[600px]">
+        <div className="w-full md:max-w-[600px]">
           <h1 className="text-headingColor text-2xl">
             How are you feeling now?
           </h1>
           <div className="flex flex-col">
             <textarea
-              className="p-3 lg:p-7 rounded-[12px] border border-solid border-[#D9DCE2] cursor-pointer mt-4 min-h-[200px] min-w-[300px]"
+              className="p-3 lg:p-7 rounded-[12px] border border-solid border-[#D9DCE2] cursor-pointer mt-4 min-h-[200px] w-full"
               placeholder="Enter your problem here..."
               name="data"
               rows="3"
