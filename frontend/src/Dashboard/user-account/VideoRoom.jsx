@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { VideoPlayer } from "./VideoPlayer";
 import styles from "./VideoRoom.module.css";
 import AgoraRTC from "agora-rtc-sdk-ng";
@@ -13,63 +13,63 @@ import { BASE_URL } from "../../config";
 
 const CHANNEL = "medicare";
 
-const client = AgoraRTC.createClient({
-  mode: "rtc",
-  codec: "vp8",
-});
-
 export const VideoRoom = () => {
   const navigate = useNavigate();
+  const clientRef = useRef(null); // client lives inside component, fresh each mount
   const [users, setUsers] = useState([]);
   const [localTracks, setLocalTracks] = useState([]);
+  const localTracksRef = useRef([]); // ref so cleanup can access latest tracks
   const [isMuted, setIsMuted] = useState(false);
   const [isCameraOff, setIsCameraOff] = useState(false);
   const [status, setStatus] = useState("Connecting...");
   const [error, setError] = useState(null);
 
-  const handleUserJoined = async (user, mediaType) => {
-    await client.subscribe(user, mediaType);
-    if (mediaType === "video") {
-      setUsers((prev) => [...prev, user]);
-    }
-    if (mediaType === "audio") {
-      user.audioTrack.play();
-    }
-  };
-
-  const handleUserLeft = (user) => {
-    setUsers((prev) => prev.filter((u) => u.uid !== user.uid));
-  };
-
   useEffect(() => {
-    let tracks = [];
+    // Create a brand-new Agora client on every mount
+    const client = AgoraRTC.createClient({ mode: "rtc", codec: "vp8" });
+    clientRef.current = client;
+
+    const handleUserJoined = async (user, mediaType) => {
+      await client.subscribe(user, mediaType);
+      if (mediaType === "video") {
+        setUsers((prev) => [...prev, user]);
+      }
+      if (mediaType === "audio") {
+        user.audioTrack.play();
+      }
+    };
+
+    const handleUserLeft = (user) => {
+      setUsers((prev) => prev.filter((u) => u.uid !== user.uid));
+    };
 
     const joinRoom = async () => {
       try {
-        // 1. Fetch a fresh token from backend
+        // 1. Fetch fresh token from backend
         setStatus("Getting token...");
         const res = await fetch(`${BASE_URL}/agora/token?channel=${CHANNEL}`);
         if (!res.ok) throw new Error("Failed to fetch Agora token");
         const { token, appId } = await res.json();
 
-        // 2. Set up event listeners
+        // 2. Register event listeners
         client.on("user-published", handleUserJoined);
         client.on("user-left", handleUserLeft);
 
-        // 3. Join the channel
+        // 3. Join channel
         setStatus("Joining channel...");
         const uid = await client.join(appId, CHANNEL, token, null);
 
         // 4. Create mic + camera tracks
         setStatus("Starting camera & mic...");
-        tracks = await AgoraRTC.createMicrophoneAndCameraTracks();
+        const tracks = await AgoraRTC.createMicrophoneAndCameraTracks();
         const [audioTrack, videoTrack] = tracks;
 
-        // 5. Add local user to the video grid
+        // 5. Store tracks in both state and ref
+        localTracksRef.current = tracks;
         setLocalTracks(tracks);
         setUsers((prev) => [...prev, { uid, videoTrack, audioTrack }]);
 
-        // 6. Publish to the channel
+        // 6. Publish
         await client.publish(tracks);
         setStatus("Connected");
       } catch (err) {
@@ -81,31 +81,33 @@ export const VideoRoom = () => {
 
     joinRoom();
 
+    // Cleanup: stop tracks and leave channel when component unmounts
     return () => {
-      // Cleanup on unmount
-      for (let track of tracks) {
+      client.off("user-published", handleUserJoined);
+      client.off("user-left", handleUserLeft);
+      for (const track of localTracksRef.current) {
         track.stop();
         track.close();
       }
-      client.off("user-published", handleUserJoined);
-      client.off("user-left", handleUserLeft);
       client.leave().catch(() => {});
     };
   }, []);
 
   const handleLeave = async () => {
+    const client = clientRef.current;
     try {
-      for (let track of localTracks) {
+      for (const track of localTracksRef.current) {
         track.stop();
         track.close();
       }
-      if (localTracks.length > 0) {
-        await client.unpublish(localTracks);
+      if (localTracksRef.current.length > 0) {
+        await client.unpublish(localTracksRef.current);
       }
       await client.leave();
     } catch (err) {
       console.error("Leave error:", err);
     } finally {
+      localTracksRef.current = [];
       setLocalTracks([]);
       setUsers([]);
       navigate("/users/profile/me");
@@ -113,7 +115,7 @@ export const VideoRoom = () => {
   };
 
   const handleMute = () => {
-    const audioTrack = localTracks[0];
+    const audioTrack = localTracksRef.current[0];
     if (audioTrack) {
       const newMuted = !isMuted;
       audioTrack.setEnabled(!newMuted);
@@ -122,7 +124,7 @@ export const VideoRoom = () => {
   };
 
   const handleCamera = () => {
-    const videoTrack = localTracks[1];
+    const videoTrack = localTracksRef.current[1];
     if (videoTrack) {
       const newCameraOff = !isCameraOff;
       videoTrack.setEnabled(!newCameraOff);
@@ -132,31 +134,35 @@ export const VideoRoom = () => {
 
   if (error) {
     return (
-      <div className={styles.videoRoom_cont} style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "16px" }}>
+      <div
+        className={styles.videoRoom_cont}
+        style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "16px" }}
+      >
         <p style={{ color: "red", fontSize: "16px" }}>⚠️ {error}</p>
-        <button className="btn" onClick={() => navigate("/users/profile/me")}>Back to Dashboard</button>
+        <button className="btn" onClick={() => navigate("/users/profile/me")}>
+          Back to Dashboard
+        </button>
       </div>
     );
   }
 
   return (
     <div className={styles.videoRoom_cont}>
-      {/* Status bar while connecting */}
       {status !== "Connected" && (
         <p style={{ textAlign: "center", color: "#aaa", padding: "10px" }}>
           🔄 {status}
         </p>
       )}
 
-      {/* Video grid */}
       <div className={styles.videoPlayer_cont}>
         {users.map((user) => (
           <VideoPlayer key={user.uid} user={user} />
         ))}
       </div>
 
-      {/* Controls — always visible */}
-      <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: "40px", marginTop: "16px" }}>
+      <div
+        style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: "40px", marginTop: "16px" }}
+      >
         <div className={styles.end_call} onClick={handleMute} title={isMuted ? "Unmute" : "Mute"}>
           {isMuted ? (
             <LiaMicrophoneSlashSolid style={{ width: "50px", height: "40px", cursor: "pointer", color: "white" }} />
