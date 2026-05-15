@@ -116,8 +116,8 @@ Frontend runs at `http://localhost:5173`
 
 | Service | Platform | URL |
 |---|---|---|
-| Backend API | Render | `https://medicura-backend.onrender.com` |
-| Frontend | Vercel | `https://medicura.vercel.app` |
+| Backend API | Render | `https://medicura-backend-ft2r.onrender.com` |
+| Frontend | Vercel | `https://medicura-frontend.vercel.app` |
 
 ### Deploy Backend → Render
 1. Connect this repo on [Render](https://render.com)
